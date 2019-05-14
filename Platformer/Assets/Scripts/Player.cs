@@ -1,82 +1,277 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
+using System.Collections;
 
 [RequireComponent(typeof(Controller2D))]
-
 public class Player : MonoBehaviour
 {
+
     public float jumpHeight = 4;
-    public float jumpApex = 0.4f; //time it takes for the player to reach the max height point while jumping
+    public float timeToJumpApex = .4f;
+    float accelerationTimeAirborne = .2f;
+    float accelerationTimeGrounded = .1f;
+    float moveSpeed = 6;
 
-    float accTimeAir = .2f;
-    float accTimeGround = .1f;//these determine the horizontal movement while in air and while in ground
-
-    float moveSpeed = 10;
     float gravity;
     float jumpVelocity;
-
     Vector3 velocity;
-
     float velocityXSmoothing;
 
-    Controller2D control;
+    Controller2D controller;
 
-    // Start is called before the first frame update
     void Start()
     {
-        control = GetComponent<Controller2D>();
+        controller = GetComponent<Controller2D>();
 
-        gravity = -(2 * jumpHeight) / Mathf.Pow(jumpApex, 2);
-        jumpVelocity = Mathf.Abs(gravity) * jumpApex;
-
+        gravity = -(2 * jumpHeight) / Mathf.Pow(timeToJumpApex, 2);
+        jumpVelocity = Mathf.Abs(gravity) * timeToJumpApex;
+        print("Gravity: " + gravity + "  Jump Velocity: " + jumpVelocity);
     }
 
-    //so since gravity and jumpvelocity are not so confident values we are determing jumpheight
-    //and jumpapex to convert gravity and jumpvelocity in terms of the jumhei & jumapx
-    //we need two formulas 1. delta movement(calculation for gravity) 2.final velocity (calculation for jumpvelocity) 
-
-        /*
-         * deltaMovement = initialvelocity * time + (acc * time^2 / 2)
-         * we have to write it interms of gravity
-         * acc = gravity
-         * time = jumpapex
-         * deltamovement = jumpheight
-         * since initial velocity = 0.
-         * gravity = (2 * jumpheight / jumpapex^2)
-         */
-
-        /*
-         * calculating for final velocity
-         * finalvel = initialvel + acc * time
-         * since initialvel will be 0
-         * jumpvel = gravity * jumpapex
-         */
-
-    // Update is called once per frame
     void Update()
     {
-        //
-        if (control.collisions.above || control.collisions.below)
+
+        if (controller.collisions.above || controller.collisions.below)
         {
             velocity.y = 0;
         }
-        
-        //
+
         Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
 
-        //
-        if (Input.GetKeyDown(KeyCode.Space) && control.collisions.below)
+        if (Input.GetKeyDown(KeyCode.Space) && controller.collisions.below)
         {
             velocity.y = jumpVelocity;
         }
 
-        //this is to have smooth left and right shifts while moving
         float targetVelocityX = input.x * moveSpeed;
-        velocity.x = Mathf.SmoothDamp(velocity.x, targetVelocityX, ref velocityXSmoothing, control.collisions.below ? accTimeGround : accTimeAir);
-
-        //
+        velocity.x = Mathf.SmoothDamp(velocity.x, targetVelocityX, ref velocityXSmoothing, (controller.collisions.below) ? accelerationTimeGrounded : accelerationTimeAirborne);
         velocity.y += gravity * Time.deltaTime;
-        control.Move(velocity * Time.deltaTime);
+        controller.Move(velocity * Time.deltaTime);
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*using UnityEngine;
+using System.Collections;
+
+[RequireComponent(typeof(BoxCollider2D))]
+public class Controller2D : MonoBehaviour
+{
+
+    public LayerMask collisionMask;
+
+    const float skinWidth = .015f;
+    public int horizontalRayCount = 4;
+    public int verticalRayCount = 4;
+
+    float horizontalRaySpacing;
+    float verticalRaySpacing;
+
+    BoxCollider2D collider;
+    RaycastOrigins raycastOrigins;
+    public CollisionInfo collisions;
+
+    void Start()
+    {
+        collider = GetComponent<BoxCollider2D>();
+        CalculateRaySpacing();
+    }
+
+    public void Move(Vector3 velocity)
+    {
+        UpdateRaycastOrigins();
+        collisions.Reset();
+
+        if (velocity.x != 0)
+        {
+            HorizontalCollisions(ref velocity);
+        }
+        if (velocity.y != 0)
+        {
+            VerticalCollisions(ref velocity);
+        }
+
+        transform.Translate(velocity);
+    }
+
+    void HorizontalCollisions(ref Vector3 velocity)
+    {
+        float directionX = Mathf.Sign(velocity.x);
+        float rayLength = Mathf.Abs(velocity.x) + skinWidth;
+
+        for (int i = 0; i < horizontalRayCount; i++)
+        {
+            Vector2 rayOrigin = (directionX == -1) ? raycastOrigins.bottomLeft : raycastOrigins.bottomRight;
+            rayOrigin += Vector2.up * (horizontalRaySpacing * i);
+            RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.right * directionX, rayLength, collisionMask);
+
+            Debug.DrawRay(rayOrigin, Vector2.right * directionX * rayLength, Color.red);
+
+            if (hit)
+            {
+                velocity.x = (hit.distance - skinWidth) * directionX;
+                rayLength = hit.distance;
+
+                collisions.left = directionX == -1;
+                collisions.right = directionX == 1;
+            }
+        }
+    }
+
+    void VerticalCollisions(ref Vector3 velocity)
+    {
+        float directionY = Mathf.Sign(velocity.y);
+        float rayLength = Mathf.Abs(velocity.y) + skinWidth;
+
+        for (int i = 0; i < verticalRayCount; i++)
+        {
+            Vector2 rayOrigin = (directionY == -1) ? raycastOrigins.bottomLeft : raycastOrigins.topLeft;
+            rayOrigin += Vector2.right * (verticalRaySpacing * i + velocity.x);
+            RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.up * directionY, rayLength, collisionMask);
+
+            Debug.DrawRay(rayOrigin, Vector2.up * directionY * rayLength, Color.red);
+
+            if (hit)
+            {
+                velocity.y = (hit.distance - skinWidth) * directionY;
+                rayLength = hit.distance;
+
+                collisions.below = directionY == -1;
+                collisions.above = directionY == 1;
+            }
+        }
+    }
+
+    void UpdateRaycastOrigins()
+    {
+        Bounds bounds = collider.bounds;
+        bounds.Expand(skinWidth * -2);
+
+        raycastOrigins.bottomLeft = new Vector2(bounds.min.x, bounds.min.y);
+        raycastOrigins.bottomRight = new Vector2(bounds.max.x, bounds.min.y);
+        raycastOrigins.topLeft = new Vector2(bounds.min.x, bounds.max.y);
+        raycastOrigins.topRight = new Vector2(bounds.max.x, bounds.max.y);
+    }
+
+    void CalculateRaySpacing()
+    {
+        Bounds bounds = collider.bounds;
+        bounds.Expand(skinWidth * -2);
+
+        horizontalRayCount = Mathf.Clamp(horizontalRayCount, 2, int.MaxValue);
+        verticalRayCount = Mathf.Clamp(verticalRayCount, 2, int.MaxValue);
+
+        horizontalRaySpacing = bounds.size.y / (horizontalRayCount - 1);
+        verticalRaySpacing = bounds.size.x / (verticalRayCount - 1);
+    }
+
+    struct RaycastOrigins
+    {
+        public Vector2 topLeft, topRight;
+        public Vector2 bottomLeft, bottomRight;
+    }
+
+    public struct CollisionInfo
+    {
+        public bool above, below;
+        public bool left, right;
+
+        public void Reset()
+        {
+            above = below = false;
+            left = right = false;
+        }
+    }
+
+}*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
