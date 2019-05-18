@@ -12,6 +12,7 @@ public class Controller2D : MonoBehaviour
     public int verticalRayCount = 4;
 
     float maxClimbAngle = 80;
+    float maxDescendAngle = 80;
 
     float horizontalRaySpacing;
     float verticalRaySpacing;
@@ -26,11 +27,19 @@ public class Controller2D : MonoBehaviour
         CalculateRaySpacing();
     }
 
+
+    //step-4 check for the reference below for better understanding in the player script
     public void Move(Vector3 velocity)
     {
         UpdateRaycastOrigins();
         collisions.Reset();
+        collisions.velocityOld = velocity;
 
+
+        if (velocity.y < 0)
+        {
+            DescendSlope(ref velocity);
+        }
         if (velocity.x != 0)
         {
             HorizontalCollisions(ref velocity);
@@ -42,6 +51,9 @@ public class Controller2D : MonoBehaviour
 
         transform.Translate(velocity);
     }
+
+
+    //Step-6 same as the vertical collision checking collisions for x axis
 
     void HorizontalCollisions(ref Vector3 velocity)
     {
@@ -58,11 +70,23 @@ public class Controller2D : MonoBehaviour
 
             if (hit)
             {
+                //step-8
+                //calculating for slope climbing
 
                 float slopeAngle = Vector2.Angle(hit.normal, Vector2.up);
 
                 if (i == 0 && slopeAngle <= maxClimbAngle)
                 {
+                    //below if is for when there two slopes in shape of v before climbing to next slope
+                    // after descending from previous the bot right/left ray is still hittin the stuff which is making the system to confuse.
+                    //so we are setting the deactivating the descending slope and when the climbing slope is active
+                    if (collisions.descendingSlope)
+                    {
+                        collisions.descendingSlope = false;
+                        velocity = collisions.velocityOld;
+                    }
+                    
+                    //
                     float distanceToSlopeStart = 0;
                     if (slopeAngle != collisions.slopeAngleOld)
                     {
@@ -87,8 +111,14 @@ public class Controller2D : MonoBehaviour
                     collisions.right = directionX == 1;
                 }
             }
-        }
+        } 
     }
+
+
+    //step-5 since we are not using rigidbody we are trying to calculate stuff using rays
+    //so when the ray detects an obstacle using collision mask as it gets near to the object a condition is return in such a way that the velocity is reduced accordingly
+    //ray origin - if falling down then bot if we are jumping up then topleft
+    //rayOrigin += Vector2.right * (verticalRaySpacing * i + velocity.x); we did + velocity.x cause we have to check for vertical collision while moving left and right as well.
 
     void VerticalCollisions(ref Vector3 velocity)
     {
@@ -116,9 +146,37 @@ public class Controller2D : MonoBehaviour
                 collisions.below = directionY == -1;
                 collisions.above = directionY == 1;
             }
+ 
         }
+
+        //Step-10
+        //Checking for two slopes which are continuous and connected
+
+        if (collisions.climbingSlope)
+        {
+            float directionX = Mathf.Sign(velocity.x);
+            rayLength = Mathf.Abs(velocity.x) + skinWidth;
+            Vector2 rayOrigin = ((directionX == -1) ? raycastOrigins.bottomLeft : raycastOrigins.bottomRight);
+            RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.right * directionX, rayLength, collisionMask);
+
+            if (hit)
+            {
+                float slopeAngle = Vector2.Angle(hit.normal, Vector2.up);
+                if (slopeAngle != collisions.slopeAngle)
+                {
+                    velocity.x = (hit.distance - skinWidth) * directionX;
+                    collisions.slopeAngle = slopeAngle;
+                }
+            }
+            
+        }
+
     }
 
+
+
+    //step-9
+    //determining players movespeed and jump ability while in slopes
     void ClimbSlope(ref Vector3 velocity, float slopeAngle)
     {
         float moveDistance = Mathf.Abs(velocity.x);
@@ -134,6 +192,42 @@ public class Controller2D : MonoBehaviour
         }
     }
 
+
+    //step-11
+    //making descendent slopes and player to travel through them
+
+    void DescendSlope(ref Vector3 velocity)
+    {
+        float directionX = Mathf.Sign(velocity.x);
+        Vector2 rayOrigin = (directionX == -1) ? raycastOrigins.bottomRight : raycastOrigins.bottomLeft;
+        RaycastHit2D hit = Physics2D.Raycast(rayOrigin, -Vector2.up, Mathf.Infinity, collisionMask);
+   
+        if (hit)
+        {
+            float slopeAngle = Vector2.Angle(hit.normal, Vector2.up);
+            if (slopeAngle != 0 && slopeAngle <= maxDescendAngle)
+            {
+                if (Mathf.Sign(hit.normal.x) == directionX)
+                {
+                    //hit.distance - skinwidth  gives the how far it is from collision
+                    //
+                    if (hit.distance - skinWidth <= Mathf.Tan(slopeAngle * Mathf.Deg2Rad) * Mathf.Abs(velocity.x))
+                    {
+                        float moveDistance = Mathf.Abs(velocity.x);
+                        float descendVelocityY = Mathf.Sin(slopeAngle * Mathf.Deg2Rad) * moveDistance;
+                        velocity.x = Mathf.Cos(slopeAngle * Mathf.Deg2Rad) * moveDistance * Mathf.Sign(velocity.x);
+                        velocity.y -= descendVelocityY;
+
+                        collisions.slopeAngle = slopeAngle;
+                        collisions.descendingSlope = true;
+                        collisions.below = true;
+                    }
+                }
+            }
+        }
+    }
+
+    //Step-2 creating bounds and assigning bounds wrt to each corner of the box.
     void UpdateRaycastOrigins()
     {
         Bounds bounds = collider.bounds;
@@ -145,6 +239,7 @@ public class Controller2D : MonoBehaviour
         raycastOrigins.topRight = new Vector2(bounds.max.x, bounds.max.y);
     }
 
+    //step-3 calculate the raycount and rayspacing for the bounds
     void CalculateRaySpacing()
     {
         Bounds bounds = collider.bounds;
@@ -157,12 +252,16 @@ public class Controller2D : MonoBehaviour
         verticalRaySpacing = bounds.size.x / (verticalRayCount - 1);
     }
 
+    //step-1 creating the ray origins that come out of the player. 
     struct RaycastOrigins
     {
         public Vector2 topLeft, topRight;
         public Vector2 bottomLeft, bottomRight;
     }
 
+
+    //step-7 determining collisions above below left and right
+    //default setting the collision as false
     public struct CollisionInfo
     {
         public bool above, below;
@@ -170,12 +269,15 @@ public class Controller2D : MonoBehaviour
 
         public bool climbingSlope;
         public float slopeAngle, slopeAngleOld;
+        public bool descendingSlope;
+        public Vector3 velocityOld;
 
         public void Reset()
         {
             above = below = false;
             left = right = false;
             climbingSlope = false;
+            descendingSlope = false;
 
             slopeAngleOld = slopeAngle;
             slopeAngle = 0;
